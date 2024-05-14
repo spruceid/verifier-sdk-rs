@@ -1,0 +1,23 @@
+[package]
+name = "verifier-sdk-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Spruce Systems, Inc."]
+license = "Apache-2.0 OR MIT"
+description = "Verifier SDK Rust"
+repository = "https://github.com/spruceid/verifier-sdk-rs/"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cose-rs = { git = "https://github.com/spruceid/cose-rs", rev = "877d6c4", features = [
+    "time",
+] }
+serde_cbor = { version = "0.11.2", features = ["tags"] }
+signature = "2.2.0"
+time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
+uniffi = { version = "0.27", features = ["cli"] }
+x509-cert = { version = "0.2.5" }
+
+[build-dependencies]
+uniffi = { version = "0.27", features = ["build"] }
