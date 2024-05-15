@@ -1,7 +1,13 @@
 use std::time::SystemTime;
 
-use crate::anyhow::{bail, Context};
-use cose_rs::CoseSign1;
+use crate::{
+    anyhow::{bail, Context, Result},
+    outcome::{ClaimValue, Failure},
+};
+use cose_rs::{cwt::ClaimsSet, CoseSign1};
+use serde_cbor::Value;
+use time::Date;
+use time_macros::format_description;
 use x509_cert::{
     der::{oid::AssociatedOid, Decode},
     ext::pkix::{CrlDistributionPoints, KeyUsage},
@@ -9,7 +15,7 @@ use x509_cert::{
     Certificate,
 };
 
-pub fn get_signer_certificate(cwt: &CoseSign1) -> crate::anyhow::Result<Certificate> {
+pub fn get_signer_certificate(cwt: &CoseSign1) -> Result<Certificate> {
     let cert_der = match cwt
         .protected()
         .get_i(33)
@@ -29,7 +35,7 @@ pub fn get_signer_certificate(cwt: &CoseSign1) -> crate::anyhow::Result<Certific
     Certificate::from_der(cert_der).context("signer certificate could not be parsed")
 }
 
-pub fn extract_extensions(certificate: &Certificate) -> crate::anyhow::Result<(KeyUsage, CrlDistributionPoints)> {
+pub fn extract_extensions(certificate: &Certificate) -> Result<(KeyUsage, CrlDistributionPoints)> {
     let mut key_usage = None;
     let mut crl_dp = None;
 
@@ -65,6 +71,35 @@ pub fn extract_extensions(certificate: &Certificate) -> crate::anyhow::Result<(K
     .context("unable to parse 'crl distribution points' extension")?;
 
     Ok((key_usage, crl_dp))
+}
+
+// TODO: Use treeldr instead of manual parsing?
+pub trait Claim: Sized {
+    const CWT_LABEL: i32;
+    const LABEL: &'static str;
+
+    fn from_claims(claims: &ClaimsSet) -> crate::outcome::Result<Self> {
+        claims
+            .get_i(Self::CWT_LABEL)
+            .ok_or_else(|| Failure::missing_claim(Self::LABEL))
+            .and_then(Self::from_value)
+    }
+
+    /// Parse date strings of the form "YYYY-MM-DD".
+    fn parse_datestr(value: &Value) -> crate::outcome::Result<ClaimValue> {
+        let date_str = match value {
+            Value::Text(t) => t,
+            _ => return Err(Failure::malformed_claim(Self::LABEL, value, "wrong type")),
+        };
+        let format = format_description!("[year]-[month]-[day]");
+        Date::parse(date_str, format)
+            .map_err(|e| Failure::malformed_claim(Self::LABEL, value, e))
+            .map(|_| ClaimValue::Date {
+                value: date_str.clone(),
+            })
+    }
+
+    fn from_value(value: &Value) -> crate::outcome::Result<Self>;
 }
 
 pub fn check_validity(validity: &Validity) -> crate::anyhow::Result<()> {

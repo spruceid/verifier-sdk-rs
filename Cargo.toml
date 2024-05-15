@@ -1,5 +1,5 @@
 [package]
-name = "verifier-sdk-rs"
+name = "verifier_sdk"
 version = "0.1.0"
 edition = "2021"
 authors = ["Spruce Systems, Inc."]
@@ -13,9 +13,13 @@ repository = "https://github.com/spruceid/verifier-sdk-rs/"
 cose-rs = { git = "https://github.com/spruceid/cose-rs", rev = "877d6c4", features = [
     "time",
 ] }
+miniz_oxide = "0.7.2"
+num-bigint = "0.4.4"
+num-traits = "0.2.19"
 serde_cbor = { version = "0.11.2", features = ["tags"] }
 signature = "2.2.0"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
+time-macros = "0.2.18"
 uniffi = { version = "0.27", features = ["cli"] }
 x509-cert = { version = "0.2.5" }
 
