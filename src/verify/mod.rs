@@ -12,7 +12,7 @@ use num_traits::Num as _;
 use time::OffsetDateTime;
 use uniffi::deps::anyhow::Context;
 use x509_cert::{certificate::CertificateInner, der::Encode, Certificate};
-
+use ssi_status::token_status_list::json::JsonStatusList;
 use crate::{
     anyhow::{anyhow, bail},
     crypto::{CoseP256Verifier, Crypto},
@@ -25,6 +25,12 @@ pub trait Credential {
     const IMAGE: &'static [u8];
 
     fn parse_claims(claims: ClaimsSet) -> Result<HashMap<String, ClaimValue>>;
+}
+
+pub fn decode_status_list(bits: u8, lst: String, idx: usize) -> u8 {
+    let status_list: JsonStatusList = serde_json::from_str(format!("{{\"bits\": {}, \"lst\": \"{}\"}}", bits, lst).as_str()).expect("failed to create status list");
+    let bitstring = status_list.decode(None).expect("failed to decode into BitString");
+    return bitstring.get(idx).expect("failed to get idx from BitString");
 }
 
 pub trait Verifiable: Credential {

@@ -32,6 +32,8 @@ pub enum ClaimValue {
     Text { value: String },
     /// A date claim in the format `[year]-[month]-[day]`.
     Date { value: String },
+    /// MapArray
+    StatusList { value: HashMap<String, String> },
 }
 
 #[derive(uniffi::Record, Debug)]
