@@ -2,6 +2,11 @@ pub mod helpers;
 
 use std::collections::HashMap;
 
+use crate::{
+    anyhow::{anyhow, bail},
+    crypto::{CoseP256Verifier, Crypto},
+    outcome::{ClaimValue, CredentialInfo, Failure, Outcome, Result},
+};
 use cose_rs::{
     cwt::{claim::ExpirationTime, ClaimsSet},
     sign1::VerificationResult,
@@ -9,15 +14,10 @@ use cose_rs::{
 };
 use num_bigint::BigUint;
 use num_traits::Num as _;
+use ssi_status::token_status_list::json::JsonStatusList;
 use time::OffsetDateTime;
 use uniffi::deps::anyhow::Context;
 use x509_cert::{certificate::CertificateInner, der::Encode, Certificate};
-use ssi_status::token_status_list::json::JsonStatusList;
-use crate::{
-    anyhow::{anyhow, bail},
-    crypto::{CoseP256Verifier, Crypto},
-    outcome::{ClaimValue, CredentialInfo, Failure, Outcome, Result},
-};
 
 pub trait Credential {
     const SCHEMA: &'static str;
@@ -28,9 +28,15 @@ pub trait Credential {
 }
 
 pub fn decode_status_list(bits: u8, lst: String, idx: usize) -> u8 {
-    let status_list: JsonStatusList = serde_json::from_str(format!("{{\"bits\": {}, \"lst\": \"{}\"}}", bits, lst).as_str()).expect("failed to create status list");
-    let bitstring = status_list.decode(None).expect("failed to decode into BitString");
-    return bitstring.get(idx).expect("failed to get idx from BitString");
+    let status_list: JsonStatusList =
+        serde_json::from_str(format!("{{\"bits\": {}, \"lst\": \"{}\"}}", bits, lst).as_str())
+            .expect("failed to create status list");
+    let bitstring = status_list
+        .decode(None)
+        .expect("failed to decode into BitString");
+    bitstring
+        .get(idx)
+        .expect("failed to get idx from BitString")
 }
 
 pub trait Verifiable: Credential {
