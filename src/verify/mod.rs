@@ -27,10 +27,9 @@ pub trait Credential {
     fn parse_claims(claims: ClaimsSet) -> Result<HashMap<String, ClaimValue>>;
 }
 
-pub fn decode_status_list(bits: u8, lst: String, idx: usize) -> u8 {
+pub fn decode_status_list(status_list: String, idx: usize) -> u8 {
     let status_list: JsonStatusList =
-        serde_json::from_str(format!("{{\"bits\": {}, \"lst\": \"{}\"}}", bits, lst).as_str())
-            .expect("failed to create status list");
+        serde_json::from_str(status_list.as_str()).expect("failed to create status list");
     let bitstring = status_list
         .decode(None)
         .expect("failed to decode into BitString");
