@@ -31,14 +31,8 @@ pub fn retrieve_entry_from_status_list(status_list: String, idx: usize) -> Resul
     let status_list: JsonStatusList =
         serde_json::from_str(status_list.as_str()).expect("failed to create status list");
     let bitstring = status_list
-        .decode(None);
-    match bitstring {
-        Ok(b) => match b.get(idx).ok_or(DecodeError::MissingStatusList) {
-            Ok(status) => Ok(status),
-            Err(e) => Err(e)
-        },
-        Err(e) => Err(e)
-    }
+        .decode(None)?;
+        bitstring.get(idx).ok_or(DecodeError::MissingStatusList)
 }
 
 pub trait Verifiable: Credential {
