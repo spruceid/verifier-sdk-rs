@@ -29,10 +29,11 @@ pub trait Credential {
 
 pub fn retrieve_entry_from_status_list(status_list: String, idx: usize) -> Result<u8, DecodeError> {
     let status_list: JsonStatusList =
-        serde_json::from_str(status_list.as_str()).expect("failed to create status list");
+        serde_json::from_str(status_list.as_str())
+            .map_err(|e| DecodeError::Zlib(e.into()))?;
     let bitstring = status_list
         .decode(None)?;
-        bitstring.get(idx).ok_or(DecodeError::MissingStatusList)
+    bitstring.get(idx).ok_or(DecodeError::MissingStatusList)
 }
 
 pub trait Verifiable: Credential {
