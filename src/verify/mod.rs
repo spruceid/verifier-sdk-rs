@@ -27,13 +27,14 @@ pub trait Credential {
     fn parse_claims(claims: ClaimsSet) -> Result<HashMap<String, ClaimValue>>;
 }
 
-pub fn retrieve_entry_from_status_list(status_list: String, idx: usize) -> Result<u8, DecodeError> {
+pub fn retrieve_entry_from_status_list(status_list: String, idx: usize) -> Result<u8, uniffi::deps::anyhow::Error> {
     let status_list: JsonStatusList =
         serde_json::from_str(status_list.as_str())
-            .map_err(|e| DecodeError::Zlib(e.into()))?;
+            .map_err(|_: serde_json::Error| uniffi::deps::anyhow::anyhow!("Unable to parse JSON String"))?;
     let bitstring = status_list
-        .decode(None)?;
-    bitstring.get(idx).ok_or(DecodeError::MissingStatusList)
+        .decode(None)
+        .map_err( |_: DecodeError| uniffi::deps::anyhow::anyhow!("Unable to decode JsonStatusList bitstring"))?;
+    bitstring.get(idx).ok_or(uniffi::deps::anyhow::anyhow!("Unable to get idx from bitstring"))
 }
 
 pub trait Verifiable: Credential {
