@@ -20,21 +20,25 @@ use uniffi::deps::anyhow::Context;
 use x509_cert::{certificate::CertificateInner, der::Encode, Certificate};
 
 pub trait Credential {
-    const SCHEMA: &'static str;
     const TITLE: &'static str;
     const IMAGE: &'static [u8];
 
+    fn schemas() -> Vec<&'static str>;
     fn parse_claims(claims: ClaimsSet) -> Result<HashMap<String, ClaimValue>>;
 }
 
-pub fn retrieve_entry_from_status_list(status_list: String, idx: usize) -> Result<u8, crate::anyhow::Error> {
-    let status_list: JsonStatusList =
-        serde_json::from_str(status_list.as_str())
-            .map_err(|_: serde_json::Error| crate::anyhow::anyhow!("Unable to parse JSON String"))?;
-    let bitstring = status_list
-        .decode(None)
-        .map_err( |_: DecodeError| crate::anyhow::anyhow!("Unable to decode JsonStatusList bitstring"))?;
-    bitstring.get(idx).ok_or(crate::anyhow::anyhow!("Unable to get idx from bitstring"))
+pub fn retrieve_entry_from_status_list(
+    status_list: String,
+    idx: usize,
+) -> Result<u8, crate::anyhow::Error> {
+    let status_list: JsonStatusList = serde_json::from_str(status_list.as_str())
+        .map_err(|_: serde_json::Error| crate::anyhow::anyhow!("Unable to parse JSON String"))?;
+    let bitstring = status_list.decode(None).map_err(|_: DecodeError| {
+        crate::anyhow::anyhow!("Unable to decode JsonStatusList bitstring")
+    })?;
+    bitstring
+        .get(idx)
+        .ok_or(crate::anyhow::anyhow!("Unable to get idx from bitstring"))
 }
 
 pub trait Verifiable: Credential {
@@ -60,8 +64,13 @@ pub trait Verifiable: Credential {
             .remove_i(-65537)
             .ok_or_else(|| Failure::missing_claim("Credential Schema"))?
         {
-            serde_cbor::Value::Text(s) if s == Self::SCHEMA => (),
-            v => return Err(Failure::incorrect_credential(Self::SCHEMA, v)),
+            serde_cbor::Value::Text(s) if Self::schemas().contains(&s.as_str()) => (),
+            v => {
+                return Err(Failure::incorrect_credential(
+                    format!("{:?}", Self::schemas()),
+                    v,
+                ))
+            }
         }
 
         let claims = Self::parse_claims(claims)?;
