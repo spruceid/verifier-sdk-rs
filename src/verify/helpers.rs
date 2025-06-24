@@ -51,7 +51,7 @@ pub fn extract_extensions(certificate: &Certificate) -> Result<(KeyUsage, CrlDis
             CrlDistributionPoints::OID => crl_dp = Some(&extension.extn_value),
             oid if extension.critical => bail!("unexpected critical extension: {oid}"),
             oid => {
-                crate::log::debug!("skipping certificate extension {oid}")
+                log::debug!("skipping certificate extension {oid}")
             }
         }
     }
