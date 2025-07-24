@@ -34,6 +34,8 @@ pub enum ClaimValue {
     Date { value: String },
     /// MapArray
     MapClaim { value: HashMap<String, String> },
+    /// Array of Strings
+    Array { value: Vec<String> },
 }
 
 #[derive(uniffi::Record, Debug)]
