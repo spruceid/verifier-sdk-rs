@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     anyhow::{anyhow, bail},
-    crypto::{CoseP256Verifier, Crypto},
+    crypto::{CoseDidWebP256Verifier, CoseP256Verifier, Crypto},
     outcome::{ClaimValue, CredentialInfo, Failure, Outcome, Result},
 };
 use cose_rs::{
@@ -14,10 +14,13 @@ use cose_rs::{
 };
 use num_bigint::BigUint;
 use num_traits::Num as _;
+use ssi::dids::Document;
+use ssi_jwk::{ECParams, JWK};
 use ssi_status::token_status_list::{json::JsonStatusList, DecodeError};
 use time::OffsetDateTime;
 use uniffi::deps::anyhow::Context;
-use x509_cert::{certificate::CertificateInner, der::Encode, Certificate};
+use x509_cert::der::Encode;
+use x509_cert::{certificate::CertificateInner, Certificate};
 
 pub trait Credential {
     const TITLE: &'static str;
@@ -90,6 +93,26 @@ pub trait Verifiable: Credential {
         crypto: &C,
         cwt: CoseSign1,
         trusted_roots: Vec<Certificate>,
+        did_document: Option<Document>,
+    ) -> Result<()> {
+        // Check protected header to determine verification method
+        let protected = cwt.protected();
+
+        // Check for kid parameter (4) vs x5c parameter (33)
+        if protected.get_i(4).is_some() {
+            self.validate_did_web(crypto, cwt, did_document)
+        } else if protected.get_i(33).is_some() {
+            self.validate_x509(crypto, cwt, trusted_roots)
+        } else {
+            Err(Failure::trust(anyhow!("No supported verification method found in protected header (missing both kid and x5c parameters)")))
+        }
+    }
+
+    fn validate_x509<C: Crypto>(
+        &self,
+        crypto: &C,
+        cwt: CoseSign1,
+        trusted_roots: Vec<Certificate>,
     ) -> Result<()> {
         let signer_certificate = helpers::get_signer_certificate(&cwt).map_err(Failure::trust)?;
 
@@ -117,6 +140,101 @@ pub trait Verifiable: Credential {
             .map_err(Failure::trust)?;
 
         self.validate_cwt(cwt)
+    }
+
+    /// Validates credentials using did:web verification method.
+    /// Extracts kid from COSE header, finds matching verification method in DID document,
+    /// and verifies signature using the public key from the verification method's JWK.
+    fn validate_did_web<C: Crypto>(
+        &self,
+        crypto: &C,
+        cwt: CoseSign1,
+        did_document: Option<Document>,
+    ) -> Result<()> {
+        let did_document =
+            did_document.ok_or_else(|| Failure::trust(anyhow!("DID document not found")))?;
+
+        // Extract kid from protected header
+        let kid = cwt
+            .protected()
+            .get_i(4)
+            .and_then(|v| match v {
+                serde_cbor::Value::Text(s) => Some(s.clone()),
+                serde_cbor::Value::Bytes(b) => {
+                    // Try to decode bytes as UTF-8 string
+                    String::from_utf8(b.clone()).ok()
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                Failure::trust(anyhow!("kid parameter not found or not a valid string"))
+            })?;
+
+        // Find verification method by kid
+        let verification_method = did_document
+            .verification_method
+            .iter()
+            .find(|vm| vm.id.as_str().ends_with(&kid))
+            .ok_or_else(|| {
+                let available_ids: Vec<&str> = did_document
+                    .verification_method
+                    .iter()
+                    .map(|vm| vm.id.as_str())
+                    .collect();
+                Failure::trust(anyhow!(
+                    "verification method with kid '{}' not found in DID document. Available verification methods: {:?}",
+                    kid,
+                    available_ids
+                ))
+            })?;
+
+        // Extract public key from verification method
+        let public_key = match verification_method.properties.get("publicKeyJwk") {
+            Some(jwk_value) => {
+                let jwk: JWK = serde_json::from_value(jwk_value.clone())
+                    .map_err(|e| Failure::trust(anyhow!("failed to parse JWK: {}", e)))?;
+
+                match &jwk.params {
+                    ssi_jwk::Params::EC(ECParams {
+                        x_coordinate,
+                        y_coordinate,
+                        ..
+                    }) => {
+                        let (Some(x), Some(y)) = (x_coordinate, y_coordinate) else {
+                            return Err(Failure::trust(anyhow!("Can not get coordinates")));
+                        };
+
+                        let mut public_key = Vec::with_capacity(65);
+                        public_key.push(0x04); // Uncompressed point format
+                        public_key.extend_from_slice(&x.0);
+                        public_key.extend_from_slice(&y.0);
+                        public_key
+                    }
+                    _ => return Err(Failure::trust(anyhow!("JWK is not an EC key"))),
+                }
+            }
+            None => {
+                return Err(Failure::trust(anyhow!(
+                    "publicKeyJwk not found in verification method"
+                )))
+            }
+        };
+
+        // Create COSE verifier for did:web that uses the crypto callback
+        let verifier = CoseDidWebP256Verifier { crypto, public_key };
+
+        // Verify the COSE signature
+        match cwt.verify(&verifier, None, None) {
+            VerificationResult::Success => self.validate_cwt(cwt),
+            VerificationResult::Failure(e) => Err(Failure::trust(anyhow!(
+                "failed to verify COSE signature: {}",
+                e
+            ))),
+            VerificationResult::Error(e) => Err(Failure::trust(anyhow!(
+                "error verifying COSE signature: {}",
+                e
+            ))),
+        }
     }
 
     fn validate_cwt(&self, cwt: CoseSign1) -> Result<()> {
@@ -224,6 +342,7 @@ pub trait Verifiable: Credential {
         crypto: &C,
         qr_code_payload: String,
         trusted_roots: Vec<Certificate>,
+        did_document: Option<Document>,
     ) -> Outcome {
         let (cwt, credential_info) = match self.decode(qr_code_payload) {
             Ok(s) => s,
@@ -235,7 +354,7 @@ pub trait Verifiable: Credential {
             }
         };
 
-        match self.validate(crypto, cwt, trusted_roots) {
+        match self.validate(crypto, cwt, trusted_roots, did_document) {
             Ok(()) => Outcome::Verified { credential_info },
             Err(f) => Outcome::Unverified {
                 credential_info: Some(credential_info),
