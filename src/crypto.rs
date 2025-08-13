@@ -144,13 +144,6 @@ impl<'a> signature::Verifier<CoseP256DerSignature> for CoseDidWebP256Verifier<'a
     fn verify(&self, msg: &[u8], signature: &CoseP256DerSignature) -> Result<(), signature::Error> {
         let der_signature = signature.0.to_der().to_bytes().to_vec();
 
-        println!(
-            "Verifying with public key length: {}",
-            self.public_key.len()
-        );
-        println!("Message length: {}", msg.len());
-        println!("DER signature length: {}", der_signature.len());
-
         self.crypto
             .p256_verify_with_public_key(self.public_key.clone(), msg.to_vec(), der_signature)
             .into_result()
