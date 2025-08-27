@@ -174,7 +174,7 @@ pub trait Verifiable: Credential {
         let verification_method = did_document
             .verification_method
             .iter()
-            .find(|vm| vm.id.as_str().ends_with(&kid))
+            .find(|vm| vm.id.as_str() == did_document.id.to_string() + "#" + &kid)
             .ok_or_else(|| {
                 let available_ids: Vec<&str> = did_document
                     .verification_method
