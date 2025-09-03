@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     anyhow::{anyhow, bail},
-    crypto::{CoseDidWebP256Verifier, CoseP256Verifier, Crypto},
+    crypto::{CoseP256Verifier, Crypto},
     outcome::{ClaimValue, CredentialInfo, Failure, Outcome, Result},
 };
 use cose_rs::{
@@ -14,8 +14,9 @@ use cose_rs::{
 };
 use num_bigint::BigUint;
 use num_traits::Num as _;
+use p256::PublicKey;
 use ssi::dids::Document;
-use ssi_jwk::{ECParams, JWK};
+use ssi_jwk::{Params, JWK};
 use ssi_status::token_status_list::{json::JsonStatusList, DecodeError};
 use time::OffsetDateTime;
 use uniffi::deps::anyhow::Context;
@@ -194,24 +195,16 @@ pub trait Verifiable: Credential {
                 let jwk: JWK = serde_json::from_value(jwk_value.clone())
                     .map_err(|e| Failure::trust(anyhow!("failed to parse JWK: {}", e)))?;
 
-                match &jwk.params {
-                    ssi_jwk::Params::EC(ECParams {
-                        x_coordinate,
-                        y_coordinate,
-                        ..
-                    }) => {
-                        let (Some(x), Some(y)) = (x_coordinate, y_coordinate) else {
-                            return Err(Failure::trust(anyhow!("Can not get coordinates")));
-                        };
+                let key = jwk.to_public();
+                let pubkey: PublicKey = if let Params::EC(ec_params) = &key.params {
+                    ec_params.try_into().map_err(|e| {
+                        Failure::trust(anyhow!("failed to convert ECParams to PublicKey: {}", e))
+                    })?
+                } else {
+                    return Err(Failure::trust(anyhow!("key is not an EC key")));
+                };
 
-                        let mut public_key = Vec::with_capacity(65);
-                        public_key.push(0x04); // Uncompressed point format
-                        public_key.extend_from_slice(&x.0);
-                        public_key.extend_from_slice(&y.0);
-                        public_key
-                    }
-                    _ => return Err(Failure::trust(anyhow!("JWK is not an EC key"))),
-                }
+                pubkey
             }
             None => {
                 return Err(Failure::trust(anyhow!(
@@ -221,7 +214,10 @@ pub trait Verifiable: Credential {
         };
 
         // Create COSE verifier for did:web that uses the crypto callback
-        let verifier = CoseDidWebP256Verifier { crypto, public_key };
+        let verifier = CoseP256Verifier {
+            crypto,
+            certificate_der: public_key.to_sec1_bytes().to_vec(),
+        };
 
         // Verify the COSE signature
         match cwt.verify(&verifier, None, None) {
