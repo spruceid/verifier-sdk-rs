@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     anyhow::{anyhow, bail},
-    crypto::{CoseP256Verifier, Crypto},
+    crypto::{CoseP256Verifier, Crypto, KeyMaterial},
     outcome::{ClaimValue, CredentialInfo, Failure, Outcome, Result},
 };
 use cose_rs::{
@@ -216,7 +216,7 @@ pub trait Verifiable: Credential {
         // Create COSE verifier for did:web that uses the crypto callback
         let verifier = CoseP256Verifier {
             crypto,
-            certificate_der: public_key.to_sec1_bytes().to_vec(),
+            key_material: KeyMaterial::PublicKey(public_key.to_sec1_bytes().to_vec()),
         };
 
         // Verify the COSE signature
@@ -290,7 +290,7 @@ pub trait Verifiable: Credential {
             .context("unable to encode signer certificate as der")?;
         let signer_signature = signer_certificate.signature.raw_bytes().to_vec();
         crypto
-            .p256_verify(
+            .p256_verify_with_cert(
                 root_certificate
                     .to_der()
                     .context("unable to encode root certificate as der")?,
@@ -318,10 +318,13 @@ pub trait Verifiable: Credential {
         // Validate that Signer issued CWT.
         let verifier = CoseP256Verifier {
             crypto,
-            certificate_der: signer_certificate
-                .to_der()
-                .context("unable to encode signer certificate as der")?,
+            key_material: KeyMaterial::Certificate(
+                signer_certificate
+                    .to_der()
+                    .context("unable to encode signer certificate as der")?,
+            ),
         };
+
         match cwt.verify(&verifier, None, None) {
             VerificationResult::Success => Ok(()),
             VerificationResult::Failure(e) => {

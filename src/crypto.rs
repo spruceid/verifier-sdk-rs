@@ -2,9 +2,16 @@ use uniffi::deps::anyhow::Context;
 use x509_cert::der::{asn1, Encode};
 
 pub trait Crypto {
-    fn p256_verify(
+    fn p256_verify_with_cert(
         &self,
         certificate_der: Vec<u8>,
+        payload: Vec<u8>,
+        signature: Vec<u8>,
+    ) -> VerificationResult;
+
+    fn p256_verify_with_public_key(
+        &self,
+        public_key_bytes: Vec<u8>,
         payload: Vec<u8>,
         signature: Vec<u8>,
     ) -> VerificationResult;
@@ -28,7 +35,13 @@ impl VerificationResult {
 /// A verifier for CoseSign objects with ECDSA + P-256 signatures.
 pub struct CoseP256Verifier<'a> {
     pub crypto: &'a dyn Crypto,
-    pub certificate_der: Vec<u8>,
+    pub key_material: KeyMaterial,
+}
+
+#[derive(Clone)]
+pub enum KeyMaterial {
+    Certificate(Vec<u8>),
+    PublicKey(Vec<u8>),
 }
 
 /// A CoseSign ECDSA + P-256 signature.
@@ -81,9 +94,17 @@ impl<'a> signature::Verifier<CoseP256Signature> for CoseP256Verifier<'a> {
             .context("unable to encode DER sequence")
             .map_err(signature::Error::from_source)?;
 
-        self.crypto
-            .p256_verify(self.certificate_der.clone(), msg.to_vec(), der_signature)
-            .into_result()
-            .map_err(signature::Error::from_source)
+        match &self.key_material {
+            KeyMaterial::Certificate(cert) => self
+                .crypto
+                .p256_verify_with_cert(cert.clone(), msg.to_vec(), der_signature)
+                .into_result()
+                .map_err(signature::Error::from_source),
+            KeyMaterial::PublicKey(key_pair) => self
+                .crypto
+                .p256_verify_with_public_key(key_pair.clone(), msg.to_vec(), der_signature)
+                .into_result()
+                .map_err(signature::Error::from_source),
+        }
     }
 }
