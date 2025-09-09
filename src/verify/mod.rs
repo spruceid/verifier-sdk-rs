@@ -171,17 +171,29 @@ pub trait Verifiable: Credential {
                 Failure::trust(anyhow!("kid parameter not found or not a valid string"))
             })?;
 
+        let issuer = cwt
+            .claims_set()
+            .map_err(|_| Failure::trust(anyhow!("claims set not found")))?
+            .ok_or_else(|| Failure::trust(anyhow!("claims set not found")))?
+            .get_i(1)
+            .and_then(|v| match v {
+                serde_cbor::Value::Text(s) => Some(s.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| Failure::trust(anyhow!("issuer not found")))?;
+
         // Find verification method by kid
         let verification_method = did_document
             .verification_method
             .iter()
-            .find(|vm| vm.id.as_str() == did_document.id.to_string() + "#" + &kid)
+            .find(|vm| vm.id.as_str() == format!("{issuer}#{kid}"))
             .ok_or_else(|| {
                 let available_ids: Vec<&str> = did_document
                     .verification_method
                     .iter()
                     .map(|vm| vm.id.as_str())
                     .collect();
+
                 Failure::trust(anyhow!(
                     "verification method with kid '{}' not found in DID document. Available verification methods: {:?}",
                     kid,
