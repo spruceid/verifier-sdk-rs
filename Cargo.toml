@@ -10,21 +10,26 @@ repository = "https://github.com/spruceid/verifier-sdk-rs/"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+base64 = "0.22.1"
 cose-rs = { git = "https://github.com/spruceid/cose-rs", rev = "0018c9b", features = [
     "time",
 ] }
+ecdsa = { version = "0.16", features = ["verifying", "der"] }
 log = { version = "0.4", features = ["std", "serde"] }
 miniz_oxide = "0.7.2"
 num-bigint = "0.4.4"
 num-traits = "0.2.19"
+p256 = { version = "0.13", features = ["ecdsa", "std"] }
 serde_cbor = { version = "0.11.2", features = ["tags"] }
+serde_json = { version = "1.0.120" }
 signature = "2.2.0"
+ssi = "0.12.0"
+ssi-status = { git = "https://github.com/spruceid/ssi.git", rev = "157fb00" }
+ssi-jwk = "0.3.2"
 time = { version = "0.3.36", features = ["macros", "formatting", "parsing"] }
 time-macros = "0.2.18"
 uniffi = { version = "0.29", features = ["cli"] }
 x509-cert = { version = "0.2.5" }
-ssi-status = { git = "https://github.com/spruceid/ssi.git", rev = "157fb00" }
-serde_json = { version = "1.0.120" }
 
 [build-dependencies]
 uniffi = { version = "0.29", features = ["build"] }
